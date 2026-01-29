@@ -1,93 +1,98 @@
-from fastapi import FastAPI, UploadFile, File, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+import os
+import uuid
+import json
+from datetime import datetime
+from fastapi import FastAPI, File, UploadFile, Request
+from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-
-from datetime import datetime
-import shutil
-import os
-import json
-
 from model import AnimalDetector
-
-# ----------------- INIT -----------------
-
-app = FastAPI(title="Animal Monitoring System")
-
-app.mount("/static", StaticFiles(directory="static"), name="static")
-templates = Jinja2Templates(directory="templates")
+import pandas as pd
 
 UPLOAD_DIR = "uploads"
 HISTORY_FILE = "history.json"
+EXCEL_REPORT = "report.xlsx"
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-if not os.path.exists(HISTORY_FILE):
-    with open(HISTORY_FILE, "w") as f:
-        json.dump([], f)
+app = FastAPI(title="Animal Monitoring")
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
-detector = AnimalDetector(
-    model_path="yolov8n.pt",
-    conf=0.3
-)
+templates = Jinja2Templates(directory="templates")
 
-# ----------------- ROUTES -----------------
+detector = AnimalDetector()
+
+
+def load_history():
+    if not os.path.exists(HISTORY_FILE) or os.stat(HISTORY_FILE).st_size == 0:
+        return []
+    with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_history(entry: dict):
+    data = load_history()
+    data.append(entry)
+    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def generate_excel():
+    data = load_history()
+    if not data:
+        return
+    df = pd.DataFrame(data)
+    df.to_excel(EXCEL_REPORT, index=False)
+
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 
-@app.post("/detect")
-async def detect(file: UploadFile = File(...)):
-    file_path = os.path.join(UPLOAD_DIR, file.filename)
+@app.post("/detect", response_class=HTMLResponse)
+def detect(request: Request, file: UploadFile = File(...)):
+    ext = file.filename.split('.')[-1]
+    filename = f"{uuid.uuid4().hex}.{ext}"
+    filepath = os.path.join(UPLOAD_DIR, filename)
 
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    with open(filepath, "wb") as f:
+        f.write(file.file.read())
 
-    detections = detector.predict(file_path)
+    detections = detector.predict(filepath)
 
-    stats = {"dog": 0, "cat": 0}
-    for d in detections:
-        stats[d["class"]] += 1
+    animals = {d['class'] for d in detections}
+    message = ""
+    if "dog" in animals and "cat" in animals:
+        message = "Обнаружены кошка и собака"
+    elif "dog" in animals:
+        message = "Обнаружена собака"
+    elif "cat" in animals:
+        message = "Обнаружена кошка"
+    else:
+        message = "Животные не обнаружены"
+
+    stats = {
+        "datetime": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "image": filename,
+        "detections": ", ".join(animals) if animals else "нет",
+        "count": len(detections)
+    }
 
     save_history(stats)
+    generate_excel()
 
-    return JSONResponse({
-        "detections": detections,
-        "summary": stats
-    })
+    return templates.TemplateResponse(
+        "index.html",
+        {
+            "request": request,
+            "image_url": f"/uploads/{filename}",
+            "message": message,
+            "stats": stats
+        }
+    )
 
 
-@app.get("/stats")
-def get_stats():
-    with open(HISTORY_FILE, "r") as f:
-        history = json.load(f)
-
-    total = {"dog": 0, "cat": 0}
-    for h in history:
-        for k in total:
-            total[k] += h["detected"].get(k, 0)
-
-    return {
-        "total": total,
-        "last_requests": history[-10:]
-    }
-
-# ----------------- HELPERS -----------------
-
-def save_history(detected):
-    record = {
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "source": "image",
-        "detected": detected
-    }
-
-    with open(HISTORY_FILE, "r") as f:
-        data = json.load(f)
-
-    data.append(record)
-
-    with open(HISTORY_FILE, "w") as f:
-        json.dump(data, f, indent=2)
-
+@app.get("/report")
+def download_report():
+    return FileResponse(EXCEL_REPORT, filename="animal_report.xlsx")

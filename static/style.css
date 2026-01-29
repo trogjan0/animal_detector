@@ -27,3 +27,13 @@ pre {
     margin-top: 10px;
 }
 
+#preview {
+    margin-top: 10px;
+    border-radius: 5px;
+}
+
+#stats {
+    white-space: pre-line;
+    font-size: 16px;
+}
+

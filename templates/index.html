@@ -2,64 +2,28 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Мониторинг бездомных животных</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <title>Мониторинг животных</title>
 </head>
 <body>
+    <h1>Мониторинг бездомных животных</h1>
+<form action="/detect" method="post" enctype="multipart/form-data">
+    <input type="file" name="file" required>
+    <button type="submit">Запустить обработку</button>
+</form>
 
-<h1>🐕 Мониторинг бездомных животных 🐈</h1>
+{% if image_url %}
+    <h2>Загруженное изображение</h2>
+    <img src="{{ image_url }}" width="400">
+{% endif %}
 
-<input type="file" id="fileInput">
-<button onclick="runDetection()">Запустить обработку</button>
-
-<h2 id="message"></h2>
-
-<h2>Результат</h2>
-<pre id="result"></pre>
-
-<h2>Статистика</h2>
-<button onclick="loadStats()">Обновить</button>
-<pre id="stats"></pre>
-
-<script>
-async function runDetection() {
-    const file = document.getElementById("fileInput").files[0];
-    if (!file) {
-        alert("Выберите изображение");
-        return;
-    }
-
-    const formData = new FormData();
-    formData.append("file", file);
-
-    const response = await fetch("/detect", {
-        method: "POST",
-        body: formData
-    });
-
-    const data = await response.json();
-
-    // JSON вывод
-    document.getElementById("result").textContent =
-        JSON.stringify(data, null, 2);
-
-    // Сообщение пользователю
-    const msg = document.getElementById("message");
-    const dogs = data.summary.dog;
-    const cats = data.summary.cat;
-
-    if (dogs === 0 && cats === 0) {
-        msg.textContent = "❌ Животные не обнаружены";
-        msg.style.color = "red";
-    } else {
-        let text = "✅ Обнаружено: ";
-        msg.textContent = text;
-        msg.style.color = "green";
-    }
-}
-</script>
-
-
+{% if message %}
+    <h2>{{ message }}</h2>
+    <p>
+        Время: {{ stats.datetime }}<br>
+        Найдено объектов: {{ stats.count }}<br>
+        Классы: {{ stats.detections }}
+    </p>
+    <a href="/report">Скачать Excel-отчёт</a>
+{% endif %}
 </body>
 </html>
-
