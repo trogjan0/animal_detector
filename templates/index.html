@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Мониторинг бездомных животных</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<h1>🐕 Мониторинг бездомных животных 🐈</h1>
+
+<input type="file" id="fileInput">
+<button onclick="runDetection()">Запустить обработку</button>
+
+<h2 id="message"></h2>
+
+<h2>Результат</h2>
+<pre id="result"></pre>
+
+<h2>Статистика</h2>
+<button onclick="loadStats()">Обновить</button>
+<pre id="stats"></pre>
+
+<script>
+async function runDetection() {
+    const file = document.getElementById("fileInput").files[0];
+    if (!file) {
+        alert("Выберите изображение");
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch("/detect", {
+        method: "POST",
+        body: formData
+    });
+
+    const data = await response.json();
+
+    // JSON вывод
+    document.getElementById("result").textContent =
+        JSON.stringify(data, null, 2);
+
+    // Сообщение пользователю
+    const msg = document.getElementById("message");
+    const dogs = data.summary.dog;
+    const cats = data.summary.cat;
+
+    if (dogs === 0 && cats === 0) {
+        msg.textContent = "❌ Животные не обнаружены";
+        msg.style.color = "red";
+    } else {
+        let text = "✅ Обнаружено: ";
+        msg.textContent = text;
+        msg.style.color = "green";
+    }
+}
+</script>
+
+
+</body>
+</html>
+
